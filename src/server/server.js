@@ -6,9 +6,16 @@ import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'node:url';
 import db from '../storage/db.js';
 import { config } from '../config/env.js';
+import { cexPriceMap } from '../feed/gateFeed.js';
 
 export function startServer({ engines = [], liveSpread = new Map() } = {}) {
-  const liveSorted = (limit = 200) => [...liveSpread.values()].sort((a, b) => Math.abs(b.spreadPct) - Math.abs(a.spreadPct)).slice(0, limit);
+  // Живая цена Gate и её возраст (cexPriceMap обновляется по WS постоянно, в отличие
+  // от спреда, который пересчитывается лишь на DEX-тике). Так видно, что Gate жив.
+  const enrich = (row) => {
+    const p = cexPriceMap.get(row.gateSymbol);
+    return { ...row, cexLive: p ? (p.mid ?? null) : null, cexAgeMs: (p && p.ts) ? Date.now() - p.ts : null };
+  };
+  const liveSorted = (limit = 200) => [...liveSpread.values()].sort((a, b) => Math.abs(b.spreadPct) - Math.abs(a.spreadPct)).slice(0, limit).map(enrich);
   const counters = () => engines.map((e) => e.getCounters());
 
   const app = express();

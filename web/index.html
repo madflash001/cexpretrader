@@ -37,7 +37,7 @@
     <h2>Live-спреды (perp vs DEX)</h2>
     <div class="panel">
       <table>
-        <thead><tr><th class="l">символ</th><th>сеть</th><th>DEX</th><th>perp</th><th>спред %</th></tr></thead>
+        <thead><tr><th class="l">символ</th><th>сеть</th><th>DEX</th><th>perp@тик</th><th>Gate live</th><th>возраст</th><th>спред %</th></tr></thead>
         <tbody id="live"></tbody>
       </table>
     </div>
@@ -57,6 +57,9 @@
 const CHAIN = { 1: 'ETH', 56: 'BSC', 8453: 'Base' };
 const fmt = (x, d = 3) => (x == null ? '—' : Number(x).toFixed(d));
 const cls = (x) => (x == null ? 'mut' : x >= 0 ? 'pos' : 'neg');
+// Возраст цены Gate: свежо (<5с) — зелёный, есть (<60с) — обычный, протухло (>60с) — красный.
+const ageFmt = (ms) => (ms == null ? '—' : ms < 1000 ? '<1с' : (ms / 1000).toFixed(0) + 'с');
+const ageCls = (ms) => (ms == null ? 'mut' : ms < 5000 ? 'pos' : ms < 60000 ? '' : 'neg');
 
 function renderStrats(cs) {
   document.getElementById('strats').innerHTML = (cs || []).map((c) => `
@@ -65,7 +68,9 @@ function renderStrats(cs) {
 function renderLive(rows) {
   document.getElementById('live').innerHTML = rows.map((r) => `
     <tr><td class="l">${r.symbol}</td><td><span class="chip">${CHAIN[r.chainId] || r.chainId}</span></td>
-    <td>${fmt(r.dexPrice, 6)}</td><td>${fmt(r.cexMid, 6)}</td><td class="${cls(r.spreadPct)}">${fmt(r.spreadPct)}</td></tr>`).join('');
+    <td>${fmt(r.dexPrice, 6)}</td><td class="mut">${fmt(r.cexMid, 6)}</td>
+    <td>${fmt(r.cexLive, 6)}</td><td class="${ageCls(r.cexAgeMs)}">${ageFmt(r.cexAgeMs)}</td>
+    <td class="${cls(r.spreadPct)}">${fmt(r.spreadPct)}</td></tr>`).join('');
 }
 function renderPos(rows) {
   document.getElementById('pos').innerHTML = rows.map((r) => `

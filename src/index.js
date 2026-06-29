@@ -63,7 +63,7 @@ async function main() {
       const spreadPct = ((mid - tick.dexPrice) / tick.dexPrice) * 100;
       if (Math.abs(spreadPct) > config.maxSaneSpreadPct) return;
 
-      liveSpread.set(tick.symbol, { symbol: tick.symbol, chainId: tick.chainId, dexPrice: tick.dexPrice, cexMid: mid, spreadPct, ts: tick.ts });
+      liveSpread.set(tick.symbol, { symbol: tick.symbol, gateSymbol: tick.gateSymbol, chainId: tick.chainId, dexPrice: tick.dexPrice, cexMid: mid, spreadPct, ts: tick.ts });
       const last = lastTickWrite.get(tick.symbol) || 0;
       if (tick.ts - last >= config.tickThrottleMs) {
         const p = cexPriceMap.get(tick.gateSymbol);
