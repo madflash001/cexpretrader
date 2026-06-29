@@ -9,13 +9,28 @@ import { config } from '../config/env.js';
 import { cexPriceMap } from '../feed/gateFeed.js';
 
 export function startServer({ engines = [], liveSpread = new Map() } = {}) {
-  // Живая цена Gate и её возраст (cexPriceMap обновляется по WS постоянно, в отличие
-  // от спреда, который пересчитывается лишь на DEX-тике). Так видно, что Gate жив.
-  const enrich = (row) => {
-    const p = cexPriceMap.get(row.gateSymbol);
-    return { ...row, cexLive: p ? (p.mid ?? null) : null, cexAgeMs: (p && p.ts) ? Date.now() - p.ts : null };
+  // Список строим из watchlist (снимок на старте — меняется только при discover→рестарт),
+  // чтобы КАЖДЫЙ символ был виден сразу, даже до первого DEX-свопа. Цена Gate (cexLive)
+  // и её возраст берутся из cexPriceMap (обновляется по WS постоянно). DEX-цена/спред —
+  // из liveSpread, появляются после первого свопа символа (до него — null/«—»).
+  const watchlist = db.getWatchlist();
+  const liveSorted = (limit = 200) => {
+    const rows = watchlist.map((w) => {
+      const ls = liveSpread.get(w.symbol);
+      const p = cexPriceMap.get(w.gateSymbol);
+      return {
+        symbol: w.symbol, gateSymbol: w.gateSymbol, chainId: w.chainId,
+        dexPrice: ls ? ls.dexPrice : null,
+        cexMid: ls ? ls.cexMid : null,
+        spreadPct: ls ? ls.spreadPct : null,
+        ts: ls ? ls.ts : null,
+        cexLive: p ? (p.mid ?? null) : null,
+        cexAgeMs: (p && p.ts) ? Date.now() - p.ts : null,
+      };
+    });
+    rows.sort((a, b) => (b.spreadPct == null ? -1 : Math.abs(b.spreadPct)) - (a.spreadPct == null ? -1 : Math.abs(a.spreadPct)));
+    return rows.slice(0, limit);
   };
-  const liveSorted = (limit = 200) => [...liveSpread.values()].sort((a, b) => Math.abs(b.spreadPct) - Math.abs(a.spreadPct)).slice(0, limit).map(enrich);
   const counters = () => engines.map((e) => e.getCounters());
 
   const app = express();
