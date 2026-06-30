@@ -41,6 +41,17 @@ export const config = {
   // Цены Gate и MM-сбор (cex_trades) этим НЕ ограничены. Можно указать любой WSS-URL
   // (Alchemy, PublicNode, Ankr…) в ALCHEMY_WSS_* — имя ключа историческое.
   dexChains: str('DEX_CHAINS', '56,8453').split(',').map((s) => Number(s.trim())).filter(Boolean),
+  // Quoter-замер исполнимой цены покупки на DEX (реальный слиппедж по кривой пула).
+  // HTTP-RPC для eth_call к QuoterV2 — дефолт бесплатный PublicNode (Alchemy CU не тратится).
+  quoteHttp: {
+    56: str('QUOTE_HTTP_BSC', 'https://bsc-rpc.publicnode.com'),
+    8453: str('QUOTE_HTTP_BASE', 'https://base-rpc.publicnode.com'),
+    1: str('QUOTE_HTTP_ETH', ''),
+  },
+  // Размеры покупки (USD), для которых пишем исполнимую цену/слиппедж.
+  quoteSizesUsd: str('QUOTE_SIZES', '50,100,300,500').split(',').map((s) => Number(s.trim())).filter((n) => n > 0),
+  // Не чаще раза в N мс на символ — бережёт RPC публичной ноды.
+  quoteThrottleMs: num('QUOTE_THROTTLE_MS', 5000),
 
   // Gate.io (опционально для read-only; ключи — для точных комиссий).
   gateApiKey: str('GATE_API_KEY', ''),

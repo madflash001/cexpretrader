@@ -6,13 +6,30 @@ import config from './config/env.js';
 import db from './storage/db.js';
 import { initGateFeed, cexMid, cexPriceMap } from './feed/gateFeed.js';
 import { startDexFeed } from './feed/dexFeed.js';
+import { quoteBuy } from './connectors/dexQuoter.js';
 import { startServer } from './server/server.js';
 import { CHAIN_NAME } from './config/chains.js';
 
 const liveSpread = new Map();   // символ -> текущий спред (для дашборда/DEX-теста)
 const lastTickWrite = new Map();
 const tradeBuf = [];            // буфер трейдов CEX (флашится батчем раз в секунду)
+const quoteBuf = [];            // буфер Quoter-замеров DEX
+const lastQuoteTs = new Map();  // троттл Quoter-замера на символ
 let tradesCollected = 0;
+let quotesCollected = 0;
+
+/** Quoter-замер исполнимой цены покупки на размеры QUOTE_SIZES (async, не блокирует тик). */
+async function probeQuotes(w, ts, mid) {
+  for (const size of config.quoteSizesUsd) {
+    try {
+      const exec = await quoteBuy(w, size);
+      if (exec > 0) quoteBuf.push({
+        ts, symbol: w.symbol, chainId: w.chainId, sizeUsd: size,
+        midPrice: mid, execPrice: exec, slippagePct: mid > 0 ? (exec - mid) / mid * 100 : null,
+      });
+    } catch { /* публичная нода могла лимитнуть — пропускаем замер */ }
+  }
+}
 
 /** Выбор символов для сбора ленты: из env TRADE_SYMBOLS или топ-N по ликвидности. */
 function pickTradeSymbols(watchlist) {
@@ -64,16 +81,23 @@ async function main() {
 
   // Флаш буфера трейдов батчем (раз в секунду) — не построчно (см. db.insertTrades).
   const flushTimer = setInterval(() => {
-    if (!tradeBuf.length) return;
-    const batch = tradeBuf.splice(0, tradeBuf.length);
-    try { db.insertTrades(batch); tradesCollected += batch.length; }
-    catch (e) { console.error('[mm] insertTrades:', e.message); }
+    if (tradeBuf.length) {
+      const batch = tradeBuf.splice(0, tradeBuf.length);
+      try { db.insertTrades(batch); tradesCollected += batch.length; }
+      catch (e) { console.error('[mm] insertTrades:', e.message); }
+    }
+    if (quoteBuf.length) {
+      const qb = quoteBuf.splice(0, quoteBuf.length);
+      try { db.insertQuotes(qb); quotesCollected += qb.length; }
+      catch (e) { console.error('[dex] insertQuotes:', e.message); }
+    }
   }, 1000);
 
   // DEX-фид только по нужным сетям (дефолт BSC+Base — экономит CU провайдера,
   // на ETH DEX-догоняние нерентабельно). Цены Gate/MM-сбор это не ограничивает.
   const dexWatchlist = watchlist.filter((w) => config.dexChains.includes(w.chainId));
-  console.log(`[dex] подписка на свопы по ${dexWatchlist.length} пулам (сети: ${config.dexChains.join(',')})`);
+  const wlBySymbol = new Map(dexWatchlist.map((w) => [w.symbol, w]));
+  console.log(`[dex] подписка на свопы по ${dexWatchlist.length} пулам (сети: ${config.dexChains.join(',')}); Quoter-замер $${config.quoteSizesUsd.join('/$')}`);
   const feed = startDexFeed(
     dexWatchlist,
     (tick) => {
@@ -89,6 +113,13 @@ async function main() {
         db.insertTick({ ts: tick.ts, symbol: tick.symbol, chainId: tick.chainId, dexPrice: tick.dexPrice, cexBid: p?.bid ?? null, cexAsk: p?.ask ?? null, spreadPct });
         lastTickWrite.set(tick.symbol, tick.ts);
       }
+      // Quoter-замер исполнимой цены покупки (троттл на символ; не блокирует тик).
+      const lq = lastQuoteTs.get(tick.symbol) || 0;
+      const w = wlBySymbol.get(tick.symbol);
+      if (w && tick.ts - lq >= config.quoteThrottleMs) {
+        lastQuoteTs.set(tick.symbol, tick.ts);
+        probeQuotes(w, tick.ts, tick.dexPrice);
+      }
     },
     (st) => console.log(`[dex:${CHAIN_NAME[st.chainId] || st.chainId}] ${st.type}: ${st.detail}`),
   );
@@ -96,13 +127,14 @@ async function main() {
   const web = startServer({ liveSpread });
 
   setInterval(() => {
-    console.log(`[status] спред-символов:${liveSpread.size} | трейдов собрано:${tradesCollected} (буфер:${tradeBuf.length})`);
+    console.log(`[status] спред-символов:${liveSpread.size} | трейдов:${tradesCollected} (буф:${tradeBuf.length}) | Quoter-замеров:${quotesCollected} (буф:${quoteBuf.length})`);
   }, 20000);
 
   const shutdown = async () => {
     console.log('\nОстановка…');
     clearInterval(flushTimer);
     if (tradeBuf.length) try { db.insertTrades(tradeBuf.splice(0)); } catch {}
+    if (quoteBuf.length) try { db.insertQuotes(quoteBuf.splice(0)); } catch {}
     feed.stop(); web.stop();
     process.exit(0);
   };

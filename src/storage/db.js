@@ -59,6 +59,19 @@ export function init() {
       ask    REAL                                -- топ ask в момент записи
     );
     CREATE INDEX IF NOT EXISTS idx_trades_sym_ts ON cex_trades(symbol, ts);
+
+    -- Quoter-замер: исполнимая цена покупки на DEX по размерам + слиппедж vs mid.
+    CREATE TABLE IF NOT EXISTS dex_quotes (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts           INTEGER NOT NULL,
+      symbol       TEXT    NOT NULL,
+      chain_id     INTEGER NOT NULL,
+      size_usd     REAL    NOT NULL,
+      mid_price    REAL,                          -- mid пула на момент замера
+      exec_price   REAL    NOT NULL,              -- исполнимая цена покупки (USD/токен)
+      slippage_pct REAL                           -- (exec-mid)/mid*100
+    );
+    CREATE INDEX IF NOT EXISTS idx_quotes_sym_ts ON dex_quotes(symbol, ts);
   `);
   return db;
 }
@@ -125,7 +138,25 @@ export function getTradeStats() {
   `).all();
 }
 
+// ── dex_quotes ───────────────────────────────────────────────────────────────
+let _insQuote = null;
+/** Батч-вставка Quoter-замеров в одной транзакции. */
+export function insertQuotes(rows) {
+  if (!rows.length) return;
+  if (!_insQuote) _insQuote = db.prepare(`
+    INSERT INTO dex_quotes (ts, symbol, chain_id, size_usd, mid_price, exec_price, slippage_pct)
+    VALUES (@ts, @symbol, @chainId, @sizeUsd, @midPrice, @execPrice, @slippagePct)
+  `);
+  const tx = db.transaction((list) => { for (const r of list) _insQuote.run(r); });
+  tx(rows);
+}
+
+/** Кол-во Quoter-замеров (для статуса). */
+export function getQuoteCount() {
+  return db.prepare('SELECT COUNT(*) AS n FROM dex_quotes').get().n;
+}
+
 export default {
   init, replaceWatchlist, getWatchlist, getWatchlistMaxTs,
-  insertTick, insertTrades, getTradeStats,
+  insertTick, insertTrades, getTradeStats, insertQuotes, getQuoteCount,
 };
