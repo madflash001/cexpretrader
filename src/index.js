@@ -70,9 +70,12 @@ async function main() {
     catch (e) { console.error('[mm] insertTrades:', e.message); }
   }, 1000);
 
-  // DEX-фид: считаем спред, пишем тик (троттл), кормим дашборд.
+  // DEX-фид только по нужным сетям (дефолт BSC+Base — экономит CU провайдера,
+  // на ETH DEX-догоняние нерентабельно). Цены Gate/MM-сбор это не ограничивает.
+  const dexWatchlist = watchlist.filter((w) => config.dexChains.includes(w.chainId));
+  console.log(`[dex] подписка на свопы по ${dexWatchlist.length} пулам (сети: ${config.dexChains.join(',')})`);
   const feed = startDexFeed(
-    watchlist,
+    dexWatchlist,
     (tick) => {
       const mid = cexMid(tick.gateSymbol);
       if (mid == null || !(tick.dexPrice > 0)) return;

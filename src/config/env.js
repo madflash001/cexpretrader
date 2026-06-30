@@ -36,6 +36,11 @@ export const ALCHEMY_HTTP = {
 export const config = {
   alchemyWss: ALCHEMY_WSS,
   alchemyHttp: ALCHEMY_HTTP,
+  // Сети для DEX-фида (подписка на свопы). Дефолт BSC+Base: на ETH DEX-догоняние
+  // нерентабельно (газ ~8%/сделку), а подписки на ETH-пулы зря жгут CU провайдера.
+  // Цены Gate и MM-сбор (cex_trades) этим НЕ ограничены. Можно указать любой WSS-URL
+  // (Alchemy, PublicNode, Ankr…) в ALCHEMY_WSS_* — имя ключа историческое.
+  dexChains: str('DEX_CHAINS', '56,8453').split(',').map((s) => Number(s.trim())).filter(Boolean),
 
   // Gate.io (опционально для read-only; ключи — для точных комиссий).
   gateApiKey: str('GATE_API_KEY', ''),
