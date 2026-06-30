@@ -142,6 +142,11 @@ export function createCexConnector(exchangeId, opts = {}) {
     return exchange.watchOrderBook(symbol, limit);
   }
 
+  /** Подписка на ленту сделок по WebSocket (ccxt.pro). Возвращает массив новых трейдов. */
+  function watchTrades(symbol) {
+    return exchange.watchTrades(symbol);
+  }
+
   /** Закрыть все WebSocket-соединения (для graceful shutdown). */
   function closeWs() {
     return typeof exchange.close === 'function' ? exchange.close() : Promise.resolve();
@@ -196,6 +201,7 @@ export function createCexConnector(exchangeId, opts = {}) {
     fetchTickers,
     fetchOrderBook,
     watchOrderBook,
+    watchTrades,
     closeWs,
     listContracts,
     fetchFundingRates,

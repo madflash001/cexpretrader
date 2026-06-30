@@ -48,6 +48,9 @@ export const config = {
   excludeSymbols: new Set(str('EXCLUDE_SYMBOLS', 'BTC,ETH').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean)),
   // Watchlist пересобирается на старте, если старше стольких дней.
   watchlistMaxAgeDays: num('WATCHLIST_MAX_AGE_DAYS', 7),
+  // MM-сбор: символы для записи ленты сделок Gate. Пусто → топ-N по ликвидности.
+  tradeSymbols: str('TRADE_SYMBOLS', '').split(',').map((s) => s.trim()).filter(Boolean),
+  tradeSymbolsLimit: num('TRADE_SYMBOLS_LIMIT', 15),
 
   // Spread engine
   openThresholdPct: num('OPEN_THRESHOLD_PCT', 0.5),

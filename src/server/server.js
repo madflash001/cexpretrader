@@ -1,5 +1,5 @@
 // Дашборд: Express (REST + статика) + WebSocket (live-пуш) на одном порту (3001).
-// Получает движки (для счётчиков по стратегиям) и общий liveSpread.
+// Показывает live-спреды (DEX-тест) и статистику сбора ленты сделок (MM-тест).
 import express from 'express';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
@@ -8,7 +8,7 @@ import db from '../storage/db.js';
 import { config } from '../config/env.js';
 import { cexPriceMap } from '../feed/gateFeed.js';
 
-export function startServer({ engines = [], liveSpread = new Map() } = {}) {
+export function startServer({ liveSpread = new Map() } = {}) {
   // Список строим из watchlist (снимок на старте — меняется только при discover→рестарт),
   // чтобы КАЖДЫЙ символ был виден сразу, даже до первого DEX-свопа. Цена Gate (cexLive)
   // и её возраст берутся из cexPriceMap (обновляется по WS постоянно). DEX-цена/спред —
@@ -31,20 +31,26 @@ export function startServer({ engines = [], liveSpread = new Map() } = {}) {
     rows.sort((a, b) => (b.spreadPct == null ? -1 : Math.abs(b.spreadPct)) - (a.spreadPct == null ? -1 : Math.abs(a.spreadPct)));
     return rows.slice(0, limit);
   };
-  const counters = () => engines.map((e) => e.getCounters());
+  // Статистика сбора ленты сделок (MM-тест): трейдов на символ + темп (за сессию).
+  const startTs = Date.now();
+  const collectStats = () => {
+    const rows = db.getTradeStats();
+    const total = rows.reduce((a, r) => a + r.n, 0);
+    const mins = Math.max(1, (Date.now() - startTs) / 60000);
+    return { total, perMin: total / mins, symbols: rows.slice(0, 30) };
+  };
 
   const app = express();
   const webDir = fileURLToPath(new URL('../../web', import.meta.url));
   app.get('/api/live', (req, res) => res.json(liveSorted(Number(req.query.limit) || 200)));
-  app.get('/api/counters', (req, res) => res.json(counters()));
-  app.get('/api/positions', (req, res) => res.json(db.getRecentPositions(Math.min(Number(req.query.limit) || 200, 1000))));
+  app.get('/api/collect', (req, res) => res.json(collectStats()));
   app.get('/api/watchlist', (req, res) => res.json(db.getWatchlist()));
   app.use(express.static(webDir));
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server });
   const push = () => {
-    const msg = JSON.stringify({ type: 'tick', counters: counters(), live: liveSorted(100) });
+    const msg = JSON.stringify({ type: 'tick', live: liveSorted(100), collect: collectStats() });
     for (const c of wss.clients) if (c.readyState === c.OPEN) c.send(msg);
   };
   const timer = setInterval(push, 1000);

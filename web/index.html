@@ -3,20 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CEXpreTrader — сравнение стратегий</title>
+<title>CEXpreTrader — сбор данных</title>
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: #0d1117; color: #c9d1d9; }
   header { padding: 12px 16px; border-bottom: 1px solid #21262d; }
-  h1 { font-size: 15px; margin: 0 0 8px; color: #e6edf3; }
+  h1 { font-size: 15px; margin: 0; color: #e6edf3; }
   h1 .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#f85149; margin-right:6px; }
   h1 .dot.on { background:#3fb950; }
-  #strats { display: flex; gap: 8px; flex-wrap: wrap; }
-  .strat { background:#0f141a; border:1px solid #21262d; border-radius:6px; padding:4px 8px; font-size:12px; }
-  .strat b { color:#e6edf3; } .strat .lbl { color:#8b949e; }
   .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
   @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
   h2 { font-size: 12px; color: #8b949e; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .04em; }
+  h2 .sub { text-transform: none; letter-spacing: 0; color: #6e7681; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid #161b22; white-space: nowrap; }
   th { color: #8b949e; position: sticky; top: 0; background: #0d1117; }
@@ -28,13 +26,12 @@
 </head>
 <body>
 <header>
-  <h1><span id="ws" class="dot"></span>CEXpreTrader — сравнение стратегий <span class="mut">· read-only</span></h1>
-  <div id="strats"></div>
+  <h1><span id="ws" class="dot"></span>CEXpreTrader — сбор данных <span class="mut">· read-only · DEX-догоняние + MM</span></h1>
 </header>
 
 <div class="wrap">
   <div>
-    <h2>Live-спреды (perp vs DEX)</h2>
+    <h2>Live-спреды <span class="sub">(DEX vs Gate — тест догоняния)</span></h2>
     <div class="panel">
       <table>
         <thead><tr><th class="l">символ</th><th>сеть</th><th>DEX</th><th>perp@тик</th><th>Gate live</th><th>возраст</th><th>спред %</th></tr></thead>
@@ -43,11 +40,11 @@
     </div>
   </div>
   <div>
-    <h2>Sim-позиции (последние)</h2>
+    <h2>Сбор ленты Gate <span class="sub" id="collsum">(MM-тест)</span></h2>
     <div class="panel">
       <table>
-        <thead><tr><th class="l">стратегия</th><th class="l">символ</th><th>напр.</th><th>PnL %</th><th>причина</th><th>статус</th></tr></thead>
-        <tbody id="pos"></tbody>
+        <thead><tr><th class="l">символ</th><th>трейдов</th><th>длит., мин</th><th>трейдов/мин</th></tr></thead>
+        <tbody id="coll"></tbody>
       </table>
     </div>
   </div>
@@ -61,10 +58,6 @@ const cls = (x) => (x == null ? 'mut' : x >= 0 ? 'pos' : 'neg');
 const ageFmt = (ms) => (ms == null ? '—' : ms < 1000 ? '<1с' : (ms / 1000).toFixed(0) + 'с');
 const ageCls = (ms) => (ms == null ? 'mut' : ms < 5000 ? 'pos' : ms < 60000 ? '' : 'neg');
 
-function renderStrats(cs) {
-  document.getElementById('strats').innerHTML = (cs || []).map((c) => `
-    <span class="strat"><b>${c.id}</b> <span class="lbl">откр</span> ${c.openNow} <span class="lbl">закр</span> ${c.closeCount} <span class="lbl">част</span> ${c.partialCloseCount}</span>`).join('');
-}
 function renderLive(rows) {
   document.getElementById('live').innerHTML = rows.map((r) => `
     <tr><td class="l">${r.symbol}</td><td><span class="chip">${CHAIN[r.chainId] || r.chainId}</span></td>
@@ -72,22 +65,23 @@ function renderLive(rows) {
     <td>${fmt(r.cexLive, 6)}</td><td class="${ageCls(r.cexAgeMs)}">${ageFmt(r.cexAgeMs)}</td>
     <td class="${cls(r.spreadPct)}">${fmt(r.spreadPct)}</td></tr>`).join('');
 }
-function renderPos(rows) {
-  document.getElementById('pos').innerHTML = rows.map((r) => `
-    <tr><td class="l mut">${r.strategy || '—'}</td><td class="l">${r.symbol}</td>
-    <td class="mut">${r.direction === 'short_perp' ? 'short' : 'long'}</td>
-    <td class="${cls(r.simPnlPct)}">${fmt(r.simPnlPct)}</td>
-    <td class="mut">${r.closeReason || '—'}</td><td class="mut">${r.status}</td></tr>`).join('');
+function renderCollect(c) {
+  if (!c) return;
+  document.getElementById('collsum').textContent = `(MM-тест · всего ${c.total} трейдов · ${fmt(c.perMin, 0)}/мин)`;
+  const rows = c.symbols || [];
+  document.getElementById('coll').innerHTML = rows.map((r) => {
+    const mins = (r.lastTs && r.firstTs) ? (r.lastTs - r.firstTs) / 60000 : 0;
+    return `<tr><td class="l">${r.symbol}</td><td>${r.n}</td><td class="mut">${fmt(mins, 1)}</td><td>${fmt(mins > 0 ? r.n / mins : 0, 1)}</td></tr>`;
+  }).join('');
 }
-async function loadPositions() { try { renderPos(await (await fetch('/api/positions?limit=120')).json()); } catch {} }
 function connect() {
   const ws = new WebSocket(`ws://${location.host}`);
   const dot = document.getElementById('ws');
   ws.onopen = () => dot.classList.add('on');
   ws.onclose = () => { dot.classList.remove('on'); setTimeout(connect, 2000); };
-  ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type !== 'tick') return; renderStrats(m.counters); renderLive(m.live); };
+  ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type !== 'tick') return; renderLive(m.live); renderCollect(m.collect); };
 }
-connect(); loadPositions(); setInterval(loadPositions, 5000);
+connect();
 </script>
 </body>
 </html>

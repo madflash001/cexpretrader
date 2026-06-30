@@ -1,60 +1,76 @@
-// CEXpreTrader — точка входа. Параллельное сравнение стратегий: один поток данных
-// (DEX Swap + цены Gate) → N движков (по стратегии) принимают решения независимо.
-// Read-only, без реальных ордеров.
+// CEXpreTrader — сбор данных для двух тестов (read-only, без ордеров):
+//  • DEX-догоняние: DEX-цена (Swap) + CEX bid/ask → spread_ticks.
+//  • MM на CEX: лента сделок Gate + топ-of-book → cex_trades.
+// Симуляторы/бэктесты обоих — офлайн-скрипты поверх собранных данных.
 import config from './config/env.js';
 import db from './storage/db.js';
-import { initGateFeed, stopGateFeed, getOrderBook, contractSize, getFunding, takerFee, cexMid, cexPriceMap } from './feed/gateFeed.js';
+import { initGateFeed, cexMid, cexPriceMap } from './feed/gateFeed.js';
 import { startDexFeed } from './feed/dexFeed.js';
-import { buildWatchlist } from './discovery/buildWatchlist.js';
-import { createEngine } from './core/spreadEngine.js';
-import { STRATEGIES } from './config/strategies.js';
 import { startServer } from './server/server.js';
 import { CHAIN_NAME } from './config/chains.js';
 
-const liveSpread = new Map();   // общий «сырой» спред по символу (одинаков для всех стратегий)
+const liveSpread = new Map();   // символ -> текущий спред (для дашборда/DEX-теста)
 const lastTickWrite = new Map();
+const tradeBuf = [];            // буфер трейдов CEX (флашится батчем раз в секунду)
+let tradesCollected = 0;
 
-function logEvent(e) {
-  const s = `[${e.strategy}]`;
-  if (e.type === 'open') console.log(`${s}[OPEN ] ${e.symbol} ${e.direction} spread=${e.spreadPct.toFixed(3)}% size=$${e.sizeUsd.toFixed(1)}${e.limitedByBand ? ' (огранич.ликв.)' : ''} slip=${e.slipPct.toFixed(3)}%`);
-  else if (e.type === 'close') console.log(`${s}[CLOSE:${e.reason}] ${e.symbol} simPnL=${e.simPnlPct.toFixed(3)}% ($${e.realizedUsd.toFixed(3)})`);
-  else if (e.type === 'partial_close') console.log(`${s}[PART:${e.reason}] ${e.symbol} закрыто $${e.closedUsd.toFixed(1)}, остаток $${e.remainingUsd.toFixed(1)}`);
-  else if (e.type === 'error') console.warn(`${s}[engine:${e.symbol}] ${e.detail}`);
+/** Выбор символов для сбора ленты: из env TRADE_SYMBOLS или топ-N по ликвидности. */
+function pickTradeSymbols(watchlist) {
+  if (config.tradeSymbols.length) {
+    const set = new Set(config.tradeSymbols.map((s) => s.toUpperCase()));
+    return watchlist.filter((w) => set.has(w.symbol.toUpperCase()));
+  }
+  return [...watchlist].sort((a, b) => b.liquidityUsd - a.liquidityUsd).slice(0, config.tradeSymbolsLimit);
 }
 
 async function main() {
-  console.log('CEXpreTrader — параллельное сравнение стратегий (read-only)…');
+  console.log('CEXpreTrader — сбор данных (DEX-догоняние + MM на CEX), read-only…');
   db.init();
 
-  // Авто-обновление универсума: если watchlist пуст или старше N дней — пересобрать.
+  const watchlist = db.getWatchlist();
+  if (!watchlist.length) { console.error('watchlist пуст — сначала: npm run discover'); process.exit(1); }
   const maxTs = db.getWatchlistMaxTs();
   const ageDays = maxTs ? (Date.now() - maxTs) / 864e5 : Infinity;
   if (ageDays > config.watchlistMaxAgeDays) {
-    console.log(maxTs
-      ? `[watchlist] устарел (${ageDays.toFixed(1)} дн > ${config.watchlistMaxAgeDays}) — обновляю…`
-      : '[watchlist] пуст — собираю символы…');
+    console.log(`watchlist устарел (${ageDays === Infinity ? 'пуст' : ageDays.toFixed(1) + ' дн'}) — обновляю…`);
+    const { buildWatchlist } = await import('./discovery/buildWatchlist.js');
     await buildWatchlist();
   }
 
-  const watchlist = db.getWatchlist();
-  if (!watchlist.length) { console.error('watchlist пуст даже после discover — проверьте ключи Alchemy и доступ к Gate'); process.exit(1); }
   const perChain = {};
   for (const w of watchlist) perChain[w.chainId] = (perChain[w.chainId] || 0) + 1;
   console.log(`[watchlist] ${watchlist.length} символов: ${Object.entries(perChain).map(([k, v]) => `${CHAIN_NAME[k] || k}:${v}`).join(', ')}`);
 
+  // Символы для ленты сделок (MM-сбор) — подмножество.
+  const tradeRows = pickTradeSymbols(watchlist);
+  const tradeSymbols = tradeRows.map((w) => w.gateSymbol);
+  console.log(`[mm] лента сделок по ${tradeSymbols.length}: ${tradeRows.map((w) => w.symbol).join(', ')}`);
+
+  // Callback ленты: складываем трейды в буфер с топ-of-book на момент записи.
+  const onTrades = (gateSymbol, trades) => {
+    const p = cexPriceMap.get(gateSymbol);
+    for (const t of trades) {
+      tradeBuf.push({
+        ts: t.timestamp ?? Date.now(), symbol: gateSymbol,
+        price: Number(t.price) || 0, amount: Number(t.amount) || 0,
+        side: t.side ?? null, bid: p?.bid ?? null, ask: p?.ask ?? null,
+      });
+    }
+  };
+
   const gateSymbols = [...new Set(watchlist.map((w) => w.gateSymbol))];
-  await initGateFeed(gateSymbols);
-  console.log(`[gate] WS-стакан по ${gateSymbols.length} перпам (ccxt.pro)`);
+  await initGateFeed(gateSymbols, { tradeSymbols, onTrades });
+  console.log(`[gate] WS-цены по ${gateSymbols.length} перпам + лента по ${tradeSymbols.length}`);
 
-  // По движку на стратегию (общие зависимости и поток данных).
-  const deps = { getOrderBook, getContractSize: contractSize, getFunding, takerFee, onEvent: logEvent };
-  const engines = STRATEGIES.map((st) => createEngine(st, deps));
-  let rehydrated = 0;
-  for (const e of engines) rehydrated += e.rehydrate();
-  console.log(`[engines] стратегий: ${engines.length} (${engines.map((e) => e.id).join(', ')})${rehydrated ? ` | восстановлено позиций: ${rehydrated}` : ''}`);
-  for (const e of engines) e.startSweep();
+  // Флаш буфера трейдов батчем (раз в секунду) — не построчно (см. db.insertTrades).
+  const flushTimer = setInterval(() => {
+    if (!tradeBuf.length) return;
+    const batch = tradeBuf.splice(0, tradeBuf.length);
+    try { db.insertTrades(batch); tradesCollected += batch.length; }
+    catch (e) { console.error('[mm] insertTrades:', e.message); }
+  }, 1000);
 
-  // DEX-фид: считаем спред один раз, пишем тик один раз, рассылаем всем движкам.
+  // DEX-фид: считаем спред, пишем тик (троттл), кормим дашборд.
   const feed = startDexFeed(
     watchlist,
     (tick) => {
@@ -70,20 +86,23 @@ async function main() {
         db.insertTick({ ts: tick.ts, symbol: tick.symbol, chainId: tick.chainId, dexPrice: tick.dexPrice, cexBid: p?.bid ?? null, cexAsk: p?.ask ?? null, spreadPct });
         lastTickWrite.set(tick.symbol, tick.ts);
       }
-      const enriched = { ...tick, mid, spreadPct };
-      for (const e of engines) e.onDexTick(enriched);
     },
     (st) => console.log(`[dex:${CHAIN_NAME[st.chainId] || st.chainId}] ${st.type}: ${st.detail}`),
   );
 
-  const web = startServer({ engines, liveSpread });
+  const web = startServer({ liveSpread });
 
   setInterval(() => {
-    const line = engines.map((e) => { const c = e.getCounters(); return `${e.id}:${c.openNow}o/${c.closeCount}c/${c.partialCloseCount}p`; }).join('  ');
-    console.log(`[status] символов:${liveSpread.size} | ${line}`);
+    console.log(`[status] спред-символов:${liveSpread.size} | трейдов собрано:${tradesCollected} (буфер:${tradeBuf.length})`);
   }, 20000);
 
-  const shutdown = async () => { console.log('\nОстановка…'); feed.stop(); web.stop(); for (const e of engines) e.stopSweep(); await stopGateFeed().catch(() => {}); process.exit(0); };
+  const shutdown = async () => {
+    console.log('\nОстановка…');
+    clearInterval(flushTimer);
+    if (tradeBuf.length) try { db.insertTrades(tradeBuf.splice(0)); } catch {}
+    feed.stop(); web.stop();
+    process.exit(0);
+  };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 }

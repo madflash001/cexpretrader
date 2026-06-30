@@ -1,15 +1,13 @@
 {
   "name": "cexpretrader",
   "version": "0.1.0",
-  "description": "Event-driven DEX→CEX(Gate perp) spread scanner — Stage 1: read-only, no orders",
+  "description": "Read-only сбор данных Gate-перп для тестов DEX-догоняния и MM на CEX",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "discover": "node src/discovery/buildWatchlist.js",
-    "analyze": "node src/commands/analyze.js",
-    "backtest": "node src/commands/backtest.js"
+    "discover": "node src/discovery/buildWatchlist.js"
   },
   "engines": {
     "node": ">=20"

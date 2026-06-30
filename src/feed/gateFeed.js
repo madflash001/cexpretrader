@@ -88,6 +88,24 @@ async function streamSymbol(symbol) {
   }
 }
 
+/** Цикл WS-подписки на ленту сделок одного символа (для MM-сбора). */
+async function streamTrades(symbol, onTrades) {
+  let backoff = 1000;
+  while (running) {
+    try {
+      const trades = await gateFutures.watchTrades(symbol);
+      if (!running) break;
+      if (trades && trades.length) onTrades(symbol, trades);
+      backoff = 1000;
+    } catch (e) {
+      if (!running) break;
+      console.error(`[gateFeed] WS trades ${symbol}: ${e.message}`);
+      await sleep(backoff);
+      backoff = Math.min(backoff * 2, 30000);
+    }
+  }
+}
+
 async function pollFunding() {
   const m = await gateFutures.fetchFundingRates(symbols);
   for (const [sym, fr] of m) if (fr != null) fundingMap.set(sym, fr);
@@ -95,10 +113,12 @@ async function pollFunding() {
 
 /**
  * Инициализация и запуск WS-фида. Если symbols не передан — берём все активные
- * линейные USDT-перпы Gate.
+ * линейные USDT-перпы Gate. Если в opts заданы tradeSymbols+onTrades — дополнительно
+ * подписываемся на ленту сделок этих символов (для MM-сбора).
  * @param {string[]} [trackedSymbols]
+ * @param {{tradeSymbols?:string[], onTrades?:(symbol:string, trades:object[])=>void}} [opts]
  */
-export async function initGateFeed(trackedSymbols) {
+export async function initGateFeed(trackedSymbols, opts = {}) {
   await gateFutures.init();
   symbols = (trackedSymbols && trackedSymbols.length)
     ? trackedSymbols
@@ -106,6 +126,9 @@ export async function initGateFeed(trackedSymbols) {
 
   running = true;
   for (const sym of symbols) streamSymbol(sym); // не await — крутятся параллельно
+
+  const { tradeSymbols = [], onTrades } = opts;
+  if (onTrades && tradeSymbols.length) for (const sym of tradeSymbols) streamTrades(sym, onTrades);
 
   await pollFunding().catch((e) => console.warn('[gateFeed] funding:', e.message));
   fundingTimer = setInterval(
