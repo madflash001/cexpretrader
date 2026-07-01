@@ -13,7 +13,7 @@ export function createMomentumEngine({ onEvent = () => {}, recordPosition = () =
   let openNow = 0;
   function S(sym) {
     let s = st.get(sym);
-    if (!s) st.set(sym, s = { buf: [], sum: 0, vol: 0, prevMid: null, ofiHist: [], volHist: [], ofiThr: Infinity, volThr: 0, pos: null });
+    if (!s) st.set(sym, s = { buf: [], sum: 0, vol: 0, prevMid: null, ofiHist: [], volHist: [], ofiThr: Infinity, volThr: 0, calN: 0, pos: null });
     return s;
   }
 
@@ -55,7 +55,7 @@ export function createMomentumEngine({ onEvent = () => {}, recordPosition = () =
     s.ofiHist.push(Math.abs(ofi)); s.volHist.push(volNow);
     if (s.ofiHist.length > config.ofmRingSize) s.ofiHist.shift();
     if (s.volHist.length > config.ofmRingSize) s.volHist.shift();
-    if (s.ofiHist.length % 50 === 0) { s.ofiThr = pctile(s.ofiHist, config.ofmOfiPct) ?? Infinity; s.volThr = pctile(s.volHist, config.ofmVolPct) ?? 0; }
+    if (++s.calN % 50 === 0) { s.ofiThr = pctile(s.ofiHist, config.ofmOfiPct) ?? Infinity; s.volThr = pctile(s.volHist, config.ofmVolPct) ?? 0; }
     if (s.ofiHist.length < 200) return; // прогрев
 
     // Сигнал входа: сильный OFI + низкий вол
