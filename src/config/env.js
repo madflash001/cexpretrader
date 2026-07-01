@@ -68,6 +68,19 @@ export const config = {
   tradeSymbols: str('TRADE_SYMBOLS', '').split(',').map((s) => s.trim()).filter(Boolean),
   tradeSymbolsLimit: num('TRADE_SYMBOLS_LIMIT', 15),
 
+  // ── Order-flow momentum (PAPER-стратегия, без реальных ордеров) ───────────
+  ofmEnabled: str('OFM_ENABLED', '1') !== '0',
+  ofmWindowMs: num('OFM_WINDOW_MS', 5000),      // окно расчёта OFI
+  ofmOfiPct: num('OFM_OFI_PCT', 0.8),           // порог «сильного» OFI (перцентиль)
+  ofmVolPct: num('OFM_VOL_PCT', 0.5),           // порог «низкого» вола (перцентиль)
+  ofmTargetBps: num('OFM_TARGET_BPS', 20),      // цель (мейкер-выход), bps
+  ofmStopBps: num('OFM_STOP_BPS', 15),          // стоп (тейкер-выход), bps
+  ofmMaxHoldMs: num('OFM_MAX_HOLD_MS', 30000),  // таймаут удержания
+  ofmSizeUsd: num('OFM_SIZE_USD', 50),
+  ofmRingSize: num('OFM_RING_SIZE', 1500),      // окно онлайн-калибровки порогов
+  ofmMakerFee: num('OFM_MAKER_FEE', 0.0002),
+  ofmTakerFee: num('OFM_TAKER_FEE', 0.0005),
+
   // Spread engine
   openThresholdPct: num('OPEN_THRESHOLD_PCT', 0.5),
   closeThresholdPct: num('CLOSE_THRESHOLD_PCT', 0.1),

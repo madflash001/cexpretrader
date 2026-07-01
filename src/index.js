@@ -7,6 +7,7 @@ import db from './storage/db.js';
 import { initGateFeed, cexMid, cexPriceMap } from './feed/gateFeed.js';
 import { startDexFeed } from './feed/dexFeed.js';
 import { quoteBuy } from './connectors/dexQuoter.js';
+import { createMomentumEngine } from './strategy/ofMomentum.js';
 import { startServer } from './server/server.js';
 import { CHAIN_NAME } from './config/chains.js';
 
@@ -63,15 +64,24 @@ async function main() {
   const tradeSymbols = tradeRows.map((w) => w.gateSymbol);
   console.log(`[mm] лента сделок по ${tradeSymbols.length}: ${tradeRows.map((w) => w.symbol).join(', ')}`);
 
-  // Callback ленты: складываем трейды в буфер с топ-of-book на момент записи.
+  // Order-flow momentum (paper) — тот же поток трейдов кормит стратегию.
+  let ofmClosed = 0, ofmPnl = 0;
+  const momentum = config.ofmEnabled ? createMomentumEngine({
+    onEvent: (e) => {
+      if (e.type === 'open') console.log(`[ofm][OPEN ] ${e.sym} ${e.dir > 0 ? 'long' : 'short'} @${e.entry}`);
+      else if (e.type === 'close') console.log(`[ofm][CLOSE:${e.reason}] ${e.sym} paperPnL=$${e.pnlUsd.toFixed(3)}`);
+    },
+    recordPosition: (p) => { try { db.insertOfPosition(p); ofmClosed++; ofmPnl += p.pnlUsd; } catch (err) { console.error('[ofm] insert:', err.message); } },
+  }) : null;
+  if (momentum) console.log(`[ofm] paper-стратегия ВКЛ: сильный OFI(${config.ofmOfiPct}) + низкий вол(${config.ofmVolPct}), цель ${config.ofmTargetBps}/стоп ${config.ofmStopBps} bps, размер $${config.ofmSizeUsd}`);
+
+  // Callback ленты: складываем трейды в буфер с топ-of-book + кормим momentum.
   const onTrades = (gateSymbol, trades) => {
     const p = cexPriceMap.get(gateSymbol);
     for (const t of trades) {
-      tradeBuf.push({
-        ts: t.timestamp ?? Date.now(), symbol: gateSymbol,
-        price: Number(t.price) || 0, amount: Number(t.amount) || 0,
-        side: t.side ?? null, bid: p?.bid ?? null, ask: p?.ask ?? null,
-      });
+      const ts = t.timestamp ?? Date.now(), price = Number(t.price) || 0, amount = Number(t.amount) || 0, side = t.side ?? null;
+      tradeBuf.push({ ts, symbol: gateSymbol, price, amount, side, bid: p?.bid ?? null, ask: p?.ask ?? null });
+      if (momentum && price > 0) momentum.onTrade(gateSymbol, { ts, price, amount, side }, p);
     }
   };
 
@@ -127,7 +137,8 @@ async function main() {
   const web = startServer({ liveSpread });
 
   setInterval(() => {
-    console.log(`[status] спред-символов:${liveSpread.size} | трейдов:${tradesCollected} (буф:${tradeBuf.length}) | Quoter-замеров:${quotesCollected} (буф:${quoteBuf.length})`);
+    const ofm = momentum ? ` | ofm: сделок ${ofmClosed}, откр ${momentum.openCount()}, paperPnL $${ofmPnl.toFixed(2)}` : '';
+    console.log(`[status] спред-символов:${liveSpread.size} | трейдов:${tradesCollected} (буф:${tradeBuf.length}) | Quoter:${quotesCollected}${ofm}`);
   }, 20000);
 
   const shutdown = async () => {

@@ -72,6 +72,23 @@ export function init() {
       slippage_pct REAL                           -- (exec-mid)/mid*100
     );
     CREATE INDEX IF NOT EXISTS idx_quotes_sym_ts ON dex_quotes(symbol, ts);
+
+    -- Paper-позиции стратегии order-flow momentum (без реальных ордеров).
+    CREATE TABLE IF NOT EXISTS of_positions (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      open_ts    INTEGER NOT NULL,
+      close_ts   INTEGER NOT NULL,
+      symbol     TEXT    NOT NULL,
+      direction  TEXT    NOT NULL,               -- 'long' | 'short'
+      entry      REAL    NOT NULL,
+      exit       REAL    NOT NULL,
+      size_usd   REAL    NOT NULL,
+      reason     TEXT,                            -- 'target' | 'stop' | 'timeout'
+      pnl_usd    REAL    NOT NULL,
+      ofi        REAL,
+      vol        REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ofpos_sym_ts ON of_positions(symbol, open_ts);
   `);
   return db;
 }
@@ -156,7 +173,24 @@ export function getQuoteCount() {
   return db.prepare('SELECT COUNT(*) AS n FROM dex_quotes').get().n;
 }
 
+// ── of_positions (order-flow momentum, paper) ────────────────────────────────
+export function insertOfPosition(r) {
+  db.prepare(`
+    INSERT INTO of_positions (open_ts, close_ts, symbol, direction, entry, exit, size_usd, reason, pnl_usd, ofi, vol)
+    VALUES (@openTs, @closeTs, @symbol, @direction, @entry, @exit, @sizeUsd, @reason, @pnlUsd, @ofi, @vol)
+  `).run(r);
+}
+
+/** Сводка paper-стратегии: сделок, винрейт, суммарный PnL, разбивка по причине. */
+export function getOfStats() {
+  const tot = db.prepare('SELECT COUNT(*) n, ROUND(SUM(pnl_usd),3) pnl, SUM(CASE WHEN pnl_usd>0 THEN 1 ELSE 0 END) wins FROM of_positions').get();
+  const byReason = db.prepare('SELECT reason, COUNT(*) n, ROUND(SUM(pnl_usd),3) pnl FROM of_positions GROUP BY reason').all();
+  const bySym = db.prepare('SELECT symbol, COUNT(*) n, ROUND(SUM(pnl_usd),3) pnl FROM of_positions GROUP BY symbol ORDER BY pnl DESC').all();
+  return { n: tot.n || 0, pnl: tot.pnl || 0, wins: tot.wins || 0, byReason, bySym };
+}
+
 export default {
   init, replaceWatchlist, getWatchlist, getWatchlistMaxTs,
   insertTick, insertTrades, getTradeStats, insertQuotes, getQuoteCount,
+  insertOfPosition, getOfStats,
 };

@@ -27,6 +27,7 @@
 <body>
 <header>
   <h1><span id="ws" class="dot"></span>CEXpreTrader — сбор данных <span class="mut">· read-only · DEX-догоняние + MM</span></h1>
+  <div id="ofm" class="mut" style="margin-top:6px;font-size:12px">order-flow momentum (paper): —</div>
 </header>
 
 <div class="wrap">
@@ -74,12 +75,20 @@ function renderCollect(c) {
     return `<tr><td class="l">${r.symbol}</td><td>${r.n}</td><td class="mut">${fmt(mins, 1)}</td><td>${fmt(mins > 0 ? r.n / mins : 0, 1)}</td></tr>`;
   }).join('');
 }
+function renderOfm(o) {
+  if (!o) return;
+  const wr = o.n ? (100 * o.wins / o.n).toFixed(0) : 0;
+  const cls = o.pnl >= 0 ? 'pos' : 'neg';
+  const reasons = (o.byReason || []).map((r) => `${r.reason}:${r.n}(${fmt(r.pnl, 2)}$)`).join(' · ');
+  const top = (o.bySym || []).slice(0, 3).map((r) => `${r.symbol.replace('/USDT:USDT', '')} ${fmt(r.pnl, 2)}$`).join(', ');
+  document.getElementById('ofm').innerHTML = `order-flow momentum (paper): сделок <b>${o.n}</b> · winrate <b>${wr}%</b> · paperPnL <b class="${cls}">${fmt(o.pnl, 2)}$</b> ${reasons ? '· ' + reasons : ''} ${top ? '· топ: ' + top : ''}`;
+}
 function connect() {
   const ws = new WebSocket(`ws://${location.host}`);
   const dot = document.getElementById('ws');
   ws.onopen = () => dot.classList.add('on');
   ws.onclose = () => { dot.classList.remove('on'); setTimeout(connect, 2000); };
-  ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type !== 'tick') return; renderLive(m.live); renderCollect(m.collect); };
+  ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type !== 'tick') return; renderLive(m.live); renderCollect(m.collect); renderOfm(m.ofm); };
 }
 connect();
 </script>

@@ -44,13 +44,14 @@ export function startServer({ liveSpread = new Map() } = {}) {
   const webDir = fileURLToPath(new URL('../../web', import.meta.url));
   app.get('/api/live', (req, res) => res.json(liveSorted(Number(req.query.limit) || 200)));
   app.get('/api/collect', (req, res) => res.json(collectStats()));
+  app.get('/api/ofm', (req, res) => res.json(db.getOfStats()));
   app.get('/api/watchlist', (req, res) => res.json(db.getWatchlist()));
   app.use(express.static(webDir));
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server });
   const push = () => {
-    const msg = JSON.stringify({ type: 'tick', live: liveSorted(100), collect: collectStats() });
+    const msg = JSON.stringify({ type: 'tick', live: liveSorted(100), collect: collectStats(), ofm: db.getOfStats() });
     for (const c of wss.clients) if (c.readyState === c.OPEN) c.send(msg);
   };
   const timer = setInterval(push, 1000);
