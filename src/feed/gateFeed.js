@@ -106,6 +106,18 @@ async function streamTrades(symbol, onTrades) {
   }
 }
 
+// Динамические подписки (для momentum-универсума, добавляемого сканером на ходу).
+const priceSubs = new Set(), tradeSubs = new Set();
+function ensurePrice(sym) { if (!running || priceSubs.has(sym)) return; priceSubs.add(sym); streamSymbol(sym); }
+function ensureTrades(sym, onTrades) { if (!running || tradeSubs.has(sym)) return; tradeSubs.add(sym); streamTrades(sym, onTrades); }
+
+/** Добавить символы momentum-универсума: цена (стакан) + лента сделок. Идемпотентно. */
+export function addMomentumSymbols(list, onTrades) {
+  let added = 0;
+  for (const sym of list) { if (!tradeSubs.has(sym)) added++; ensurePrice(sym); ensureTrades(sym, onTrades); }
+  return { total: tradeSubs.size, added };
+}
+
 async function pollFunding() {
   const m = await gateFutures.fetchFundingRates(symbols);
   for (const [sym, fr] of m) if (fr != null) fundingMap.set(sym, fr);
@@ -125,10 +137,10 @@ export async function initGateFeed(trackedSymbols, opts = {}) {
     : gateFutures.listContracts().map((c) => c.symbol);
 
   running = true;
-  for (const sym of symbols) streamSymbol(sym); // не await — крутятся параллельно
+  for (const sym of symbols) ensurePrice(sym); // не await — крутятся параллельно
 
   const { tradeSymbols = [], onTrades } = opts;
-  if (onTrades && tradeSymbols.length) for (const sym of tradeSymbols) streamTrades(sym, onTrades);
+  if (onTrades && tradeSymbols.length) for (const sym of tradeSymbols) ensureTrades(sym, onTrades);
 
   await pollFunding().catch((e) => console.warn('[gateFeed] funding:', e.message));
   fundingTimer = setInterval(

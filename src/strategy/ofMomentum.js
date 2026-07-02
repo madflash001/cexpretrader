@@ -11,6 +11,7 @@ const pctile = (arr, p) => { if (arr.length < 50) return null; const a = [...arr
 export function createMomentumEngine({ onEvent = () => {}, recordPosition = () => {} } = {}) {
   const st = new Map();
   let openNow = 0;
+  let eligible = null; // null = торговать все (до первого скана); Set = только эти символы
   function S(sym) {
     let s = st.get(sym);
     if (!s) st.set(sym, s = { buf: [], sum: 0, vol: 0, prevMid: null, ofiHist: [], volHist: [], ofiThr: Infinity, volThr: 0, calN: 0, pos: null });
@@ -57,6 +58,7 @@ export function createMomentumEngine({ onEvent = () => {}, recordPosition = () =
     if (s.volHist.length > config.ofmRingSize) s.volHist.shift();
     if (++s.calN % 50 === 0) { s.ofiThr = pctile(s.ofiHist, config.ofmOfiPct) ?? Infinity; s.volThr = pctile(s.volHist, config.ofmVolPct) ?? 0; }
     if (s.ofiHist.length < 200) return; // прогрев
+    if (eligible && !eligible.has(sym)) return; // вне eligible-набора — не входим (выходы уже обработаны выше)
 
     // Сигнал входа: сильный OFI + низкий вол
     if (Math.abs(ofi) >= s.ofiThr && volNow <= s.volThr && ofi !== 0 && book && book.bid > 0 && book.ask > 0) {
@@ -70,7 +72,7 @@ export function createMomentumEngine({ onEvent = () => {}, recordPosition = () =
     }
   }
 
-  return { onTrade, openCount: () => openNow };
+  return { onTrade, openCount: () => openNow, setEligible: (set) => { eligible = set; } };
 }
 
 export default { createMomentumEngine };

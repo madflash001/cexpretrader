@@ -4,10 +4,11 @@
 // Симуляторы/бэктесты обоих — офлайн-скрипты поверх собранных данных.
 import config from './config/env.js';
 import db from './storage/db.js';
-import { initGateFeed, cexMid, cexPriceMap } from './feed/gateFeed.js';
+import { initGateFeed, addMomentumSymbols, cexMid, cexPriceMap } from './feed/gateFeed.js';
 import { startDexFeed } from './feed/dexFeed.js';
 import { quoteBuy } from './connectors/dexQuoter.js';
 import { createMomentumEngine } from './strategy/ofMomentum.js';
+import { scanCandidates } from './strategy/candidateScanner.js';
 import { startServer } from './server/server.js';
 import { CHAIN_NAME } from './config/chains.js';
 
@@ -59,11 +60,6 @@ async function main() {
   for (const w of watchlist) perChain[w.chainId] = (perChain[w.chainId] || 0) + 1;
   console.log(`[watchlist] ${watchlist.length} символов: ${Object.entries(perChain).map(([k, v]) => `${CHAIN_NAME[k] || k}:${v}`).join(', ')}`);
 
-  // Символы для ленты сделок (MM-сбор) — подмножество.
-  const tradeRows = pickTradeSymbols(watchlist);
-  const tradeSymbols = tradeRows.map((w) => w.gateSymbol);
-  console.log(`[mm] лента сделок по ${tradeSymbols.length}: ${tradeRows.map((w) => w.symbol).join(', ')}`);
-
   // Order-flow momentum (paper) — тот же поток трейдов кормит стратегию.
   let ofmClosed = 0, ofmPnl = 0;
   const momentum = config.ofmEnabled ? createMomentumEngine({
@@ -85,9 +81,32 @@ async function main() {
     }
   };
 
+  // WS-цены по watchlist (нужны для DEX-догоняния spread_ticks).
   const gateSymbols = [...new Set(watchlist.map((w) => w.gateSymbol))];
-  await initGateFeed(gateSymbols, { tradeSymbols, onTrades });
-  console.log(`[gate] WS-цены по ${gateSymbols.length} перпам + лента по ${tradeSymbols.length}`);
+  await initGateFeed(gateSymbols);
+  console.log(`[gate] WS-цены по ${gateSymbols.length} перпам (watchlist, для DEX-теста)`);
+
+  // Momentum-универсум: DEX-пара НЕ нужна. Сканер по ВСЕМ перпам (REST) → набор
+  // мониторинга (WS: цена+лента) + eligible (что реально торговать). Пересканируем.
+  if (config.momentumScan) {
+    const doScan = async () => {
+      try {
+        const r = await scanCandidates();
+        if (r.monitor.length) {
+          const { total, added } = addMomentumSymbols(r.monitor, onTrades);
+          momentum?.setEligible(new Set(r.eligible));
+          console.log(`[scan] WS-универсум momentum: ${total} (+${added}); eligible к торговле: ${r.eligible.length}`);
+        }
+      } catch (e) { console.error('[scan] ошибка:', e.message); }
+    };
+    await doScan();
+    setInterval(doScan, config.scanIntervalMs);
+  } else {
+    // Фолбэк без сканера: лента по DEX-символам watchlist (как раньше).
+    const rows = pickTradeSymbols(watchlist);
+    addMomentumSymbols(rows.map((w) => w.gateSymbol), onTrades);
+    console.log(`[mm] сканер выкл — лента по ${rows.length} watchlist-символам`);
+  }
 
   // Флаш буфера трейдов батчем (раз в секунду) — не построчно (см. db.insertTrades).
   const flushTimer = setInterval(() => {

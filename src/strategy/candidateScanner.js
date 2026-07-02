@@ -60,16 +60,16 @@ export async function scanCandidates() {
     } catch (e) { /* пропускаем символ */ }
     await sleep(60); // бережём rate-limit
   }
-  if (!scored.length) return [];
+  if (!scored.length) return { monitor: [], eligible: [], detail: [] };
 
-  // Отбор: markout > медианы И rvol < медианы (валидированное правило) → сорт по score.
-  const mkMed = median(scored.map((s) => s.markout)), vMed = median(scored.map((s) => s.rvol));
-  const passed = scored.filter((s) => s.markout > mkMed && s.rvol < vMed && s.markout > 0);
-  passed.forEach((s) => { s.score = s.markout / Math.max(s.rvol, 1e-6); });
-  passed.sort((a, b) => b.score - a.score);
-  const out = passed.slice(0, config.scanSelectK);
-  console.log(`[scan] прошли фильтр markout>${mkMed.toFixed(1)}bps & vol<${vMed.toFixed(3)}: ${passed.length} → берём ${out.length}`);
-  return out;
+  // МОНИТОР: символы с достаточной активностью (есть поток для momentum). Верх по объёму.
+  const monitor = scored.filter((s) => s.tps >= config.scanMinTps).sort((a, b) => b.vol - a.vol).slice(0, config.momentumUniverseCap);
+  // ELIGIBLE (что реально торговать): валидированное правило markout>медианы & vol<медианы.
+  const mkMed = median(monitor.map((s) => s.markout)), vMed = median(monitor.map((s) => s.rvol));
+  const eligible = monitor.filter((s) => s.markout > mkMed && s.rvol < vMed && s.markout > 0)
+    .sort((a, b) => b.markout - a.markout).slice(0, config.scanSelectK);
+  console.log(`[scan] монитор ${monitor.length} (tps≥${config.scanMinTps}); eligible ${eligible.length} (markout>${mkMed.toFixed(1)}bps & vol<${vMed.toFixed(3)}): ${eligible.map((s) => s.symbol.replace('/USDT:USDT', '')).join(', ')}`);
+  return { monitor: monitor.map((s) => s.symbol), eligible: eligible.map((s) => s.symbol), detail: eligible };
 }
 
 export default { scanCandidates };
