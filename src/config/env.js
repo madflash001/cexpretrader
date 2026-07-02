@@ -81,6 +81,15 @@ export const config = {
   ofmMakerFee: num('OFM_MAKER_FEE', 0.0002),
   ofmTakerFee: num('OFM_TAKER_FEE', 0.0005),
 
+  // ── Скан кандидатов momentum (REST, DEX-пара НЕ нужна) ────────────────────
+  momentumScan: str('MOMENTUM_SCAN', '1') !== '0',
+  scanIntervalMs: num('SCAN_INTERVAL_MS', 60 * 60 * 1000), // пересканировать раз в час
+  scanMinVolUsd: num('SCAN_MIN_VOL_USD', 2000000),         // мин. 24ч объём перпа
+  scanMaxSpreadBps: num('SCAN_MAX_SPREAD_BPS', 30),        // макс. спред (0.30%)
+  scanDeepN: num('SCAN_DEEP_N', 60),                       // сколько символов глубоко сканировать (fetchTrades)
+  scanSelectK: num('SCAN_SELECT_K', 20),                   // сколько кандидатов брать в шорт-лист
+  momentumUniverseCap: num('MOMENTUM_UNIVERSE_CAP', 40),   // предел WS-подписок (объединение шорт-листов)
+
   // Spread engine
   openThresholdPct: num('OPEN_THRESHOLD_PCT', 0.5),
   closeThresholdPct: num('CLOSE_THRESHOLD_PCT', 0.1),

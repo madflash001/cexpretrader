@@ -137,6 +137,11 @@ export function createCexConnector(exchangeId, opts = {}) {
     return exchange.fetchOrderBook(symbol, limit);
   }
 
+  /** Недавняя лента сделок по символу (REST) — для скана кандидатов (markout/vol). */
+  function fetchTrades(symbol, limit = 1000) {
+    return exchange.fetchTrades(symbol, undefined, limit);
+  }
+
   /** Подписка на стакан по WebSocket (ccxt.pro). Резолвится при каждом апдейте. */
   function watchOrderBook(symbol, limit = 50) {
     return exchange.watchOrderBook(symbol, limit);
@@ -200,6 +205,7 @@ export function createCexConnector(exchangeId, opts = {}) {
     contractSize,
     fetchTickers,
     fetchOrderBook,
+    fetchTrades,
     watchOrderBook,
     watchTrades,
     closeWs,
