@@ -1,13 +1,12 @@
 {
   "name": "cexpretrader",
   "version": "0.1.0",
-  "description": "Read-only сбор данных Gate-перп для тестов DEX-догоняния и MM на CEX",
+  "description": "Order-flow momentum (paper) на Gate-перпах: REST-сканер кандидатов + live-движок",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "discover": "node src/discovery/buildWatchlist.js"
+    "dev": "node --watch src/index.js"
   },
   "engines": {
     "node": ">=20"

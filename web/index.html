@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CEXpreTrader — сбор данных</title>
+<title>CEXpreTrader — order-flow momentum (paper)</title>
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: #0d1117; color: #c9d1d9; }
@@ -11,40 +11,39 @@
   h1 { font-size: 15px; margin: 0; color: #e6edf3; }
   h1 .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#f85149; margin-right:6px; }
   h1 .dot.on { background:#3fb950; }
+  #sum { margin-top: 8px; font-size: 13px; }
   .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; }
   @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
   h2 { font-size: 12px; color: #8b949e; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .04em; }
-  h2 .sub { text-transform: none; letter-spacing: 0; color: #6e7681; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid #161b22; white-space: nowrap; }
   th { color: #8b949e; position: sticky; top: 0; background: #0d1117; }
   td.l, th.l { text-align: left; color: #e6edf3; }
   .pos { color: #3fb950; } .neg { color: #f85149; } .mut { color: #6e7681; }
   .panel { background: #0f141a; border: 1px solid #21262d; border-radius: 8px; padding: 12px; max-height: 72vh; overflow: auto; }
-  .chip { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: #21262d; color: #8b949e; }
 </style>
 </head>
 <body>
 <header>
-  <h1><span id="ws" class="dot"></span>CEXpreTrader — сбор данных <span class="mut">· read-only · DEX-догоняние + MM</span></h1>
-  <div id="ofm" class="mut" style="margin-top:6px;font-size:12px">order-flow momentum (paper): —</div>
+  <h1><span id="ws" class="dot"></span>CEXpreTrader — order-flow momentum <span class="mut">· paper · CEX-only</span></h1>
+  <div id="sum" class="mut">—</div>
 </header>
 
 <div class="wrap">
   <div>
-    <h2>Live-спреды <span class="sub">(DEX vs Gate — тест догоняния)</span></h2>
+    <h2>Momentum по символам (paper)</h2>
     <div class="panel">
       <table>
-        <thead><tr><th class="l">символ</th><th>сеть</th><th>DEX</th><th>perp@тик</th><th>Gate live</th><th>возраст</th><th>спред %</th></tr></thead>
-        <tbody id="live"></tbody>
+        <thead><tr><th class="l">символ</th><th>сделок</th><th>paperPnL$</th></tr></thead>
+        <tbody id="ofm"></tbody>
       </table>
     </div>
   </div>
   <div>
-    <h2>Сбор ленты Gate <span class="sub" id="collsum">(MM-тест)</span></h2>
+    <h2>Сбор ленты Gate <span id="collsum" class="mut"></span></h2>
     <div class="panel">
       <table>
-        <thead><tr><th class="l">символ</th><th>трейдов</th><th>длит., мин</th><th>трейдов/мин</th></tr></thead>
+        <thead><tr><th class="l">символ</th><th>трейдов</th><th>длит.,мин</th><th>трейдов/мин</th></tr></thead>
         <tbody id="coll"></tbody>
       </table>
     </div>
@@ -52,43 +51,30 @@
 </div>
 
 <script>
-const CHAIN = { 1: 'ETH', 56: 'BSC', 8453: 'Base' };
-const fmt = (x, d = 3) => (x == null ? '—' : Number(x).toFixed(d));
+const fmt = (x, d = 2) => (x == null ? '—' : Number(x).toFixed(d));
 const cls = (x) => (x == null ? 'mut' : x >= 0 ? 'pos' : 'neg');
-// Возраст цены Gate: свежо (<5с) — зелёный, есть (<60с) — обычный, протухло (>60с) — красный.
-const ageFmt = (ms) => (ms == null ? '—' : ms < 1000 ? '<1с' : (ms / 1000).toFixed(0) + 'с');
-const ageCls = (ms) => (ms == null ? 'mut' : ms < 5000 ? 'pos' : ms < 60000 ? '' : 'neg');
-
-function renderLive(rows) {
-  document.getElementById('live').innerHTML = rows.map((r) => `
-    <tr><td class="l">${r.symbol}</td><td><span class="chip">${CHAIN[r.chainId] || r.chainId}</span></td>
-    <td>${fmt(r.dexPrice, 6)}</td><td class="mut">${fmt(r.cexMid, 6)}</td>
-    <td>${fmt(r.cexLive, 6)}</td><td class="${ageCls(r.cexAgeMs)}">${ageFmt(r.cexAgeMs)}</td>
-    <td class="${cls(r.spreadPct)}">${fmt(r.spreadPct)}</td></tr>`).join('');
-}
-function renderCollect(c) {
-  if (!c) return;
-  document.getElementById('collsum').textContent = `(MM-тест · всего ${c.total} трейдов · ${fmt(c.perMin, 0)}/мин)`;
-  const rows = c.symbols || [];
-  document.getElementById('coll').innerHTML = rows.map((r) => {
-    const mins = (r.lastTs && r.firstTs) ? (r.lastTs - r.firstTs) / 60000 : 0;
-    return `<tr><td class="l">${r.symbol}</td><td>${r.n}</td><td class="mut">${fmt(mins, 1)}</td><td>${fmt(mins > 0 ? r.n / mins : 0, 1)}</td></tr>`;
-  }).join('');
-}
 function renderOfm(o) {
   if (!o) return;
   const wr = o.n ? (100 * o.wins / o.n).toFixed(0) : 0;
-  const cls = o.pnl >= 0 ? 'pos' : 'neg';
-  const reasons = (o.byReason || []).map((r) => `${r.reason}:${r.n}(${fmt(r.pnl, 2)}$)`).join(' · ');
-  const top = (o.bySym || []).slice(0, 3).map((r) => `${r.symbol.replace('/USDT:USDT', '')} ${fmt(r.pnl, 2)}$`).join(', ');
-  document.getElementById('ofm').innerHTML = `order-flow momentum (paper): сделок <b>${o.n}</b> · winrate <b>${wr}%</b> · paperPnL <b class="${cls}">${fmt(o.pnl, 2)}$</b> ${reasons ? '· ' + reasons : ''} ${top ? '· топ: ' + top : ''}`;
+  const reasons = (o.byReason || []).map((r) => `${r.reason}:${r.n}(${fmt(r.pnl)}$)`).join(' · ');
+  document.getElementById('sum').innerHTML = `сделок <b>${o.n}</b> · winrate <b>${wr}%</b> · paperPnL <b class="${cls(o.pnl)}">${fmt(o.pnl)}$</b> ${reasons ? '· ' + reasons : ''}`;
+  document.getElementById('ofm').innerHTML = (o.bySym || []).map((r) =>
+    `<tr><td class="l">${r.symbol.replace('/USDT:USDT','')}</td><td>${r.n}</td><td class="${cls(r.pnl)}">${fmt(r.pnl)}</td></tr>`).join('');
+}
+function renderCollect(c) {
+  if (!c) return;
+  document.getElementById('collsum').textContent = `· всего ${c.total} · ${fmt(c.perMin, 0)}/мин`;
+  document.getElementById('coll').innerHTML = (c.symbols || []).map((r) => {
+    const mins = (r.lastTs && r.firstTs) ? (r.lastTs - r.firstTs) / 60000 : 0;
+    return `<tr><td class="l">${r.symbol.replace('/USDT:USDT','')}</td><td>${r.n}</td><td class="mut">${fmt(mins, 1)}</td><td>${fmt(mins > 0 ? r.n / mins : 0, 1)}</td></tr>`;
+  }).join('');
 }
 function connect() {
   const ws = new WebSocket(`ws://${location.host}`);
   const dot = document.getElementById('ws');
   ws.onopen = () => dot.classList.add('on');
   ws.onclose = () => { dot.classList.remove('on'); setTimeout(connect, 2000); };
-  ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type !== 'tick') return; renderLive(m.live); renderCollect(m.collect); renderOfm(m.ofm); };
+  ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type !== 'tick') return; renderOfm(m.ofm); renderCollect(m.collect); };
 }
 connect();
 </script>
