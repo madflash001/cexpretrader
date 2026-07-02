@@ -14,7 +14,7 @@ export function createMomentumEngine({ onEvent = () => {}, recordPosition = () =
   let eligible = null; // null = торговать все (до первого скана); Set = только эти символы
   function S(sym) {
     let s = st.get(sym);
-    if (!s) st.set(sym, s = { buf: [], sum: 0, vol: 0, prevMid: null, ofiHist: [], volHist: [], ofiThr: Infinity, volThr: 0, calN: 0, pos: null });
+    if (!s) st.set(sym, s = { buf: [], sum: 0, vol: 0, prevMid: null, ofiHist: [], volHist: [], ofiThr: Infinity, volThr: 0, calN: 0, pos: null, pnlWin: [] });
     return s;
   }
 
@@ -46,6 +46,7 @@ export function createMomentumEngine({ onEvent = () => {}, recordPosition = () =
         const gross = p.dir > 0 ? (exit - p.entry) / p.entry : (p.entry - exit) / p.entry;
         const pnlUsd = (gross - TAKER - exitFee) * p.sizeUsd;                                       // вход был тейкером
         s.pos = null; openNow--;
+        s.pnlWin.push({ ts: t.ts, pnl: pnlUsd });                                                    // трейлинг-PnL для self-отбора
         recordPosition({ symbol: sym, direction: p.dir > 0 ? 'long' : 'short', openTs: p.openTs, closeTs: t.ts, entry: p.entry, exit, sizeUsd: p.sizeUsd, reason, pnlUsd, ofi: p.ofi, vol: p.vol });
         onEvent({ type: 'close', sym, dir: p.dir, reason, pnlUsd, entry: p.entry, exit });
       }
@@ -58,7 +59,10 @@ export function createMomentumEngine({ onEvent = () => {}, recordPosition = () =
     if (s.volHist.length > config.ofmRingSize) s.volHist.shift();
     if (++s.calN % 50 === 0) { s.ofiThr = pctile(s.ofiHist, config.ofmOfiPct) ?? Infinity; s.volThr = pctile(s.volHist, config.ofmVolPct) ?? 0; }
     if (s.ofiHist.length < 200) return; // прогрев
-    if (eligible && !eligible.has(sym)) return; // вне eligible-набора — не входим (выходы уже обработаны выше)
+    if (eligible && !eligible.has(sym)) return; // вне universe сканера — не входим (выходы уже обработаны выше)
+    // Rolling self-отбор: бенчим символ, если его paper-PnL за трейлинг-окно < 0.
+    while (s.pnlWin.length && s.pnlWin[0].ts < t.ts - config.ofmPnlWindowMs) s.pnlWin.shift();
+    if (s.pnlWin.length >= config.ofmPnlWarmup && s.pnlWin.reduce((a, x) => a + x.pnl, 0) < 0) return;
 
     // Сигнал входа: сильный OFI + низкий вол
     if (Math.abs(ofi) >= s.ofiThr && volNow <= s.volThr && ofi !== 0 && book && book.bid > 0 && book.ask > 0) {

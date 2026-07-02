@@ -80,6 +80,10 @@ export const config = {
   ofmRingSize: num('OFM_RING_SIZE', 1500),      // окно онлайн-калибровки порогов
   ofmMakerFee: num('OFM_MAKER_FEE', 0.0002),
   ofmTakerFee: num('OFM_TAKER_FEE', 0.0005),
+  // Rolling self-отбор символа по недавнему paper-PnL (сильнейшее правило: prior-PnL>0).
+  // Символ бенчится, если его PnL за трейлинг-окно < 0; окно истекает → снова пробуем.
+  ofmPnlWindowMs: num('OFM_PNL_WINDOW_MS', 60 * 60 * 1000),
+  ofmPnlWarmup: num('OFM_PNL_WARMUP', 8), // не бенчить, пока < N закрытий в окне
 
   // ── Скан кандидатов momentum (REST, DEX-пара НЕ нужна) ────────────────────
   momentumScan: str('MOMENTUM_SCAN', '1') !== '0',

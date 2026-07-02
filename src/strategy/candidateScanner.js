@@ -66,11 +66,10 @@ export async function scanCandidates() {
   // в набор попадают неэффективные альты с сильным потоком, а не ликвидные мейджоры.
   const active = scored.filter((s) => s.tps >= config.scanMinTps);
   const monitor = [...active].sort((a, b) => b.markout - a.markout).slice(0, config.momentumUniverseCap);
-  // ELIGIBLE (что реально торговать): markout ≥ АБСОЛЮТНОГО пола И низкий vol (валидировано).
-  const vMed = median(monitor.map((s) => s.rvol));
-  const eligible = monitor.filter((s) => s.markout >= config.scanMinMarkoutBps && s.rvol < vMed)
-    .sort((a, b) => b.markout - a.markout).slice(0, config.scanSelectK);
-  console.log(`[scan] монитор ${monitor.length} (по markout); eligible ${eligible.length} (markout≥${config.scanMinMarkoutBps}bps & vol<${vMed.toFixed(3)}): ${eligible.map((s) => `${s.symbol.replace('/USDT:USDT', '')}(${s.markout.toFixed(0)})`).join(', ')}`);
+  // ELIGIBLE (universe для торговли): активные с положительным markout. Точный self-отбор
+  // (какие реально торговать) делает движок по трейлинг paper-PnL — сильнейшее правило.
+  const eligible = monitor.filter((s) => s.markout >= config.scanMinMarkoutBps).slice(0, config.scanSelectK);
+  console.log(`[scan] монитор ${monitor.length} (по markout); universe торговли ${eligible.length} (markout≥${config.scanMinMarkoutBps}bps): ${eligible.map((s) => `${s.symbol.replace('/USDT:USDT', '')}(${s.markout.toFixed(0)})`).join(', ')}`);
   return { monitor: monitor.map((s) => s.symbol), eligible: eligible.map((s) => s.symbol), detail: eligible };
 }
 
