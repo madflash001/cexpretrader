@@ -80,6 +80,10 @@ export const config = {
   ofmRingSize: num('OFM_RING_SIZE', 1500),      // окно онлайн-калибровки порогов
   ofmMakerFee: num('OFM_MAKER_FEE', 0.0002),
   ofmTakerFee: num('OFM_TAKER_FEE', 0.0005),
+  // Реализм исполнения (сближает paper с боевым):
+  ofmLatencyMs: num('OFM_LATENCY_MS', 20),      // сигнал→филл: сеть Токио(~5мс)+матчинг Gate(~15мс)
+  ofmEntrySlipBps: num('OFM_ENTRY_SLIP_BPS', 2), // слиппедж входа тейкером (прокси глубины; L2 не пишем)
+  ofmQueueMult: num('OFM_QUEUE_MULT', 1),        // мейкер-выход филлится, когда через цель прошёл объём ≥ mult×размер
   // Rolling self-отбор символа по недавнему paper-PnL (сильнейшее правило: prior-PnL>0).
   // Символ бенчится, если его PnL за трейлинг-окно < 0; окно истекает → снова пробуем.
   ofmPnlWindowMs: num('OFM_PNL_WINDOW_MS', 60 * 60 * 1000),
