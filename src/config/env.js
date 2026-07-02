@@ -84,11 +84,12 @@ export const config = {
   // ── Скан кандидатов momentum (REST, DEX-пара НЕ нужна) ────────────────────
   momentumScan: str('MOMENTUM_SCAN', '1') !== '0',
   scanIntervalMs: num('SCAN_INTERVAL_MS', 60 * 60 * 1000), // пересканировать раз в час
-  scanMinVolUsd: num('SCAN_MIN_VOL_USD', 2000000),         // мин. 24ч объём перпа
+  scanMinVolUsd: num('SCAN_MIN_VOL_USD', 300000),          // мин. 24ч объём (ниже — чтобы ловить мид-альты, не только мейджоры)
   scanMaxSpreadBps: num('SCAN_MAX_SPREAD_BPS', 30),        // макс. спред (0.30%)
-  scanDeepN: num('SCAN_DEEP_N', 60),                       // сколько символов глубоко сканировать (fetchTrades)
-  scanSelectK: num('SCAN_SELECT_K', 20),                   // предел eligible-списка (что реально торгуем)
-  scanMinTps: num('SCAN_MIN_TPS', 0.2),                    // мин. сделок/с (активность) для мониторинга
+  scanDeepN: num('SCAN_DEEP_N', 120),                      // сколько символов глубоко сканировать (fetchTrades)
+  scanSelectK: num('SCAN_SELECT_K', 15),                   // предел eligible-списка (что реально торгуем)
+  scanMinTps: num('SCAN_MIN_TPS', 0.2),                    // мин. сделок/с (активность)
+  scanMinMarkoutBps: num('SCAN_MIN_MARKOUT_BPS', 4),       // мин. markout eligible (реальная персистентность потока)
   momentumUniverseCap: num('MOMENTUM_UNIVERSE_CAP', 40),   // предел WS-подписок (набор мониторинга)
 
   // Spread engine
