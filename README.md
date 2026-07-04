@@ -32,7 +32,8 @@ candidateScanner (REST, все перпы Gate, раз в час)┘    отбо
   фильтр по ликвидности/спреду → markout/волатильность → короткий список для
   WS-монитора и `eligible` для торговли. DEX-пара не нужна.
 - **`src/feed/gateFeed.js`** — живой фид Gate по ccxt.pro (`watchTrades` +
-  `watchOrderBook`), funding — REST раз в 5 мин.
+  `watchOrderBook`, топ-of-book), динамические подписки: сканер добавляет символы
+  на ходу.
 - **`src/storage/db.js`** — SQLite (better-sqlite3, WAL, батч-вставки): таблицы
   `cex_trades` (сырьё для офлайн-ре-бэктеста) и `of_positions` (закрытые
   paper-сделки движка).
