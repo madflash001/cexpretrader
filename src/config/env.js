@@ -38,7 +38,7 @@ export const config = {
   ofmPnlWindowMs: num('OFM_PNL_WINDOW_MS', 60 * 60 * 1000),
   ofmPnlWarmup: num('OFM_PNL_WARMUP', 8), // не бенчить, пока < N закрытий в окне
 
-  // ── Скан кандидатов momentum (REST по всем перпам Gate, DEX-пара НЕ нужна) ──
+  // ── Скан кандидатов momentum (REST по всем перпам Gate) ──
   scanIntervalMs: num('SCAN_INTERVAL_MS', 60 * 60 * 1000), // пересканировать раз в час
   scanMinVolUsd: num('SCAN_MIN_VOL_USD', 300000),          // первичный фильтр ликвидности: мин. 24ч объём
   scanMaxSpreadBps: num('SCAN_MAX_SPREAD_BPS', 30),        // первичный фильтр: макс. спред (0.30%)

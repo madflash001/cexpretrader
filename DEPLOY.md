@@ -1,8 +1,8 @@
 # Развёртывание CEXpreTrader на сервере в Токио
 
-Сервер: **Ubuntu 24.04 LTS, AWS Tokyo (ap-northeast-1)** — рядом с Gate, RTT единицы мс,
-Gate доступен напрямую (без VPN). Лента и стакан Gate идут по WebSocket (ccxt.pro),
-curl не нужен. Всё read-only/paper — реальные ордера не выставляются.
+Сервер: **Ubuntu 24.04 LTS, AWS Tokyo (ap-northeast-1)** — рядом с Gate, RTT единицы мс.
+Лента и стакан Gate идут по WebSocket (ccxt.pro). Всё read-only/paper — реальные
+ордера не выставляются.
 
 ## 1. Node.js и инструменты сборки
 

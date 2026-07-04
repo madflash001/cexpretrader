@@ -1,5 +1,5 @@
-// Периодический REST-скан кандидатов для momentum (DEX-пара НЕ нужна). По ВСЕМ
-// линейным USDT-перпам Gate: fetchTickers → фильтр по объёму/спреду; по шорт-листу
+// Периодический REST-скан кандидатов для momentum. По ВСЕМ линейным USDT-перпам
+// Gate: fetchTickers → фильтр по объёму/спреду; по шорт-листу
 // fetchTrades → markout(30с, персистентность потока) + realized vol. Отбор по
 // правилу «markout высок, vol низок» — то, что подтвердилось walk-forward.
 import gateFutures from '../connectors/gateFutures.js';

@@ -43,7 +43,7 @@ async function main() {
     try { db.insertTrades(batch); tradesCollected += batch.length; } catch (e) { console.error('[trades] insert:', e.message); }
   }, 1000);
 
-  // Сканер кандидатов: REST по ВСЕМ перпам Gate (DEX-пара не нужна). Периодически.
+  // Сканер кандидатов: REST по ВСЕМ перпам Gate. Периодически.
   const doScan = async () => {
     try {
       const r = await scanCandidates();

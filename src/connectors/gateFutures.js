@@ -7,7 +7,6 @@ const gateFutures = createCexConnector('gate', {
   apiKey: config.gateApiKey,
   secret: config.gateApiSecret,
   quote: 'USDT',
-  chain: 'BSC',
   type: 'swap',
 });
 
